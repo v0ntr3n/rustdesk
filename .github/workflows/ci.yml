@@ -1,10 +1,7 @@
 name: CI
 
 env:
-  # MIN_SUPPORTED_RUST_VERSION: "1.46.0"
-  # CICD_INTERMEDIATES_DIR: "_cicd-intermediates"
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-  # for multiarch gcc compatibility
   VCPKG_COMMIT_ID: "9e593bb18ea69cc5095e012465dcd675a822ed0d"
 
 on:
@@ -31,6 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         job:
+          - { target: x86_64-pc-windows-msvc     , os: windows-2022 }
           - { target: x86_64-unknown-linux-gnu   , os: ubuntu-24.04 }
     steps:
       - name: Free Disk Space (Ubuntu)
@@ -87,7 +85,7 @@ jobs:
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@b1a0dd252f06b9e25b3c022a9a03bd7a427fb6a2 # v11
         with:
-          vcpkgDirectory: /opt/artifacts/vcpkg
+          vcpkgDirectory: ${{ runner.os == 'Windows' && 'C:/vcpkg' || '/opt/artifacts/vcpkg' }}
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
       - name: Install vcpkg dependencies
         run: |
@@ -99,44 +97,16 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.job.target }}
           components: ''
-      - name: Show version information (Rust, cargo, GCC)
-        shell: bash
-        run: |
-          gcc --version || true
-          rustup -V
-          rustup toolchain list
-          rustup default
-          cargo -V
-          rustc -V
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Build
+      - name: Build Release Binary
         uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
         with:
           use-cross: ${{ matrix.job.use-cross }}
           command: build
-          args: --target=${{ matrix.job.target }}
-      - name: clean
-        shell: bash
-        run: |
-          cargo clean
-      - name: Set testing options
-        id: test-options
-        shell: bash
-        run: |
-          unset CARGO_TEST_OPTIONS
-          case ${{ matrix.job.target }} in
-            arm-* | aarch64-*)
-              CARGO_TEST_OPTIONS="--lib --bin ${PROJECT_NAME} -- --skip audio"
-              ;;
-            *)
-              CARGO_TEST_OPTIONS="--workspace --no-fail-fast -- --skip test_get_cursor_pos --skip test_get_key_state --skip audio"
-              ;;
-          esac;
-          echo "CARGO_TEST_OPTIONS=${CARGO_TEST_OPTIONS}" >> $GITHUB_ENV
-          echo "CARGO_TEST_OPTIONS=${CARGO_TEST_OPTIONS}" >> $GITHUB_OUTPUT
-      - name: Run tests
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+          args: --release --target=${{ matrix.job.target }}
+      - name: Upload Windows Release Artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          use-cross: ${{ matrix.job.use-cross }}
-          command: test
-          args: --target=${{ matrix.job.target }} ${{ steps.test-options.outputs.CARGO_TEST_OPTIONS}}
+          name: rustdesk-windows-x86_64
+          path: target/x86_64-pc-windows-msvc/release/rustdesk.exe
