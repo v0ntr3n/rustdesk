@@ -197,14 +197,22 @@ jobs:
       - name: Install vcpkg dependencies (Release-only x64-windows-static with H.264)
         shell: bash
         run: |
+          export USE_AOM_391=1
           "$VCPKG_ROOT/vcpkg" install --host-triplet=x64-windows-static --triplet=x64-windows-static --x-install-root="$VCPKG_ROOT/installed"
 
       - name: Build rustdesk (Windows x64 Flutter + H.264 hwcodec)
         shell: pwsh
         run: |
+          (Get-Content .\build.py).Replace(' --locked', '') | Set-Content .\build.py
           python3 .\build.py --portable --flutter --skip-portable-pack --hwcodec --vram
           Remove-Item -Path ./rustdesk -Recurse -Force -ErrorAction SilentlyContinue
           Move-Item -Path ./flutter/build/windows/x64/runner/Release -Destination ./rustdesk -Force
+          Invoke-WebRequest -Uri https://github.com/rustdesk-org/rdev/releases/download/usbmmidd_v2/usbmmidd_v2.zip -OutFile usbmmidd_v2.zip
+          Expand-Archive -Path usbmmidd_v2.zip -DestinationPath . -Force
+          Remove-Item -Path usbmmidd_v2\Win32 -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat" -Force -ErrorAction SilentlyContinue
+          Copy-Item -Path .\usbmmidd_v2 -Destination .\rustdesk\usbmmidd_v2 -Recurse -Force
+          Remove-Item -Path .\usbmmidd_v2, .\usbmmidd_v2.zip -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Download WindowInjection.dll
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

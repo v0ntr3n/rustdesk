@@ -77,9 +77,13 @@ set(OPTIONS "\
 --disable-swscale \
 --disable-postproc \
 --enable-decoder=h264 \
+--enable-decoder=hevc \
 --enable-parser=h264 \
+--enable-parser=hevc \
 --enable-bsf=h264_mp4toannexb \
+--enable-bsf=hevc_mp4toannexb \
 --enable-bsf=h264_metadata \
+--enable-bsf=hevc_metadata \
 --enable-muxer=mp4 \
 --enable-protocol=file \
 ")
@@ -106,11 +110,16 @@ if(VCPKG_TARGET_IS_LINUX)
 --enable-cuda \
 --enable-ffnvcodec \
 --enable-encoder=h264_nvenc \
+--enable-encoder=hevc_nvenc \
 --enable-hwaccel=h264_nvdec \
+--enable-hwaccel=hevc_nvdec \
 --enable-amf  \
 --enable-encoder=h264_amf \
+--enable-encoder=hevc_amf \
 --enable-hwaccel=h264_vaapi \
+--enable-hwaccel=hevc_vaapi \
 --enable-encoder=h264_vaapi \
+--enable-encoder=hevc_vaapi \
 ")
 
         if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
@@ -127,7 +136,9 @@ elseif(VCPKG_TARGET_IS_WINDOWS)
 --enable-gpl \
 --enable-d3d11va \
 --enable-hwaccel=h264_d3d11va \
+--enable-hwaccel=hevc_d3d11va \
 --enable-hwaccel=h264_d3d11va2 \
+--enable-hwaccel=hevc_d3d11va2 \
 ")
 
     if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86" OR VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
@@ -135,11 +146,15 @@ elseif(VCPKG_TARGET_IS_WINDOWS)
 --enable-cuda \
 --enable-ffnvcodec \
 --enable-hwaccel=h264_nvdec \
+--enable-hwaccel=hevc_nvdec \
 --enable-amf \
 --enable-encoder=h264_amf \
+--enable-encoder=hevc_amf \
 --enable-encoder=h264_nvenc \
+--enable-encoder=hevc_nvenc \
 --enable-libmfx \
 --enable-encoder=h264_qsv \
+--enable-encoder=hevc_qsv \
 ")
     endif()
 
@@ -160,7 +175,9 @@ elseif(VCPKG_TARGET_IS_OSX)
 --disable-autodetect \
 --enable-videotoolbox \
 --enable-encoder=h264_videotoolbox \
+--enable-encoder=hevc_videotoolbox \
 --enable-hwaccel=h264_videotoolbox \
+--enable-hwaccel=hevc_videotoolbox \
 ")
 elseif(VCPKG_TARGET_IS_IOS)
     string(APPEND OPTIONS "\
@@ -181,7 +198,9 @@ elseif(VCPKG_CMAKE_SYSTEM_NAME STREQUAL "Android")
 --enable-mediacodec \
 --disable-hwaccels \
 --enable-encoder=h264_mediacodec \
+--enable-encoder=hevc_mediacodec \
 --enable-decoder=h264_mediacodec \
+--enable-decoder=hevc_mediacodec \
 ")
 endif()
 
@@ -627,7 +646,7 @@ function(extract_regex_from_file out)
             if(contents MATCHES "${arg_REGEX}")
                 if(NOT CMAKE_MATCH_COUNT EQUAL 1)
                     message(FATAL_ERROR "Could not identify match group in regular expression \"${arg_REGEX}\"")
-                endif()
+            endif()
             else()
                 message(WARNING "Could not find line matching \"${arg_REGEX}\" in file \"${arg_FILE_WITHOUT_EXTENSION}_major.h\"")
             endif()
