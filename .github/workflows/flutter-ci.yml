@@ -1,13 +1,7 @@
-name: Full Flutter CI
+name: Full Flutter CI (Manual All-OS)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
 
 jobs:
   run-ci:

@@ -14,8 +14,6 @@ use reqwest::{blocking::Client as SyncClient, Client as AsyncClient};
 
 macro_rules! configure_http_client {
     ($builder:expr, $tls_type:expr, $danger_accept_invalid_cert:expr, $Client: ty) => {{
-        // https://github.com/rustdesk/rustdesk/issues/11569
-        // https://docs.rs/reqwest/latest/reqwest/struct.ClientBuilder.html#method.no_proxy
         let mut builder = $builder.no_proxy();
 
         match $tls_type {
@@ -98,7 +96,18 @@ macro_rules! configure_http_client {
     }};
 }
 
-type ClientCacheKey = (TlsType, bool, Option<Socks5Server>);
+type ClientCacheKey = (u8, bool, Option<(String, String, String)>);
+
+#[inline]
+fn make_cache_key(tls_type: &TlsType, danger_accept_invalid_cert: bool) -> ClientCacheKey {
+    let tag = match tls_type {
+        TlsType::Plain => 0,
+        TlsType::NativeTls => 1,
+        TlsType::Rustls => 2,
+    };
+    let socks = Config::get_socks().map(|s| (s.proxy, s.username, s.password));
+    (tag, danger_accept_invalid_cert, socks)
+}
 
 lazy_static::lazy_static! {
     static ref SYNC_CLIENT_CACHE: std::sync::Mutex<Option<(ClientCacheKey, SyncClient)>> =
@@ -108,7 +117,7 @@ lazy_static::lazy_static! {
 }
 
 pub fn create_http_client(tls_type: TlsType, danger_accept_invalid_cert: bool) -> SyncClient {
-    let key = (tls_type, danger_accept_invalid_cert, Config::get_socks());
+    let key = make_cache_key(&tls_type, danger_accept_invalid_cert);
     if let Some((cached_key, client)) = SYNC_CLIENT_CACHE.lock().unwrap().as_ref() {
         if *cached_key == key {
             return client.clone();
@@ -124,7 +133,7 @@ pub fn create_http_client_async(
     tls_type: TlsType,
     danger_accept_invalid_cert: bool,
 ) -> AsyncClient {
-    let key = (tls_type, danger_accept_invalid_cert, Config::get_socks());
+    let key = make_cache_key(&tls_type, danger_accept_invalid_cert);
     if let Some((cached_key, client)) = ASYNC_CLIENT_CACHE.lock().unwrap().as_ref() {
         if *cached_key == key {
             return client.clone();
