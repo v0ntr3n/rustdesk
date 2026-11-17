@@ -22,7 +22,6 @@ path = "src/service.rs"
 
 [features]
 inline = []
-legacy-native-tls = ["reqwest/native-tls", "dep:openssl"]
 # Retained as no-op feature flags so existing CI / build.py invocations do not fail
 use_samplerate = []
 use_rubato = []

@@ -51,11 +51,11 @@ jobs:
         with:
           vcpkgDirectory: C:\vcpkg
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
-      - name: Install vcpkg dependencies (x64-windows-static)
+      - name: Install vcpkg dependencies (Release-only x64-windows-static with H.264)
         shell: bash
         run: |
           export USE_AOM_391=1
-          $VCPKG_ROOT/vcpkg install --triplet x64-windows-static --x-install-root="$VCPKG_ROOT/installed"
+          $VCPKG_ROOT/vcpkg install --host-triplet=x64-windows-static --triplet=x64-windows-static --x-install-root="$VCPKG_ROOT/installed"
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
@@ -63,10 +63,10 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: ''
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-      - name: Build Windows Release Binary
+      - name: Build Windows Release Binary (with H.264 hwcodec)
         shell: bash
         run: |
-          cargo build --release --target=${{ matrix.job.target }}
+          cargo build --release --features "hwcodec,vram" --target=${{ matrix.job.target }}
       - name: Upload Windows Release Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
