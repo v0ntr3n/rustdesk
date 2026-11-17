@@ -21,10 +21,9 @@ use std::time::{Duration, Instant};
 
 lazy_static! {
     static ref JVM: RwLock<Option<JavaVM>> = RwLock::new(None);
-    static ref MAIN_SERVICE_CTX: RwLock<Option<GlobalRef>> = RwLock::new(None); // MainService -> video service / audio service / info
+    static ref MAIN_SERVICE_CTX: RwLock<Option<GlobalRef>> = RwLock::new(None); // MainService -> video service / info
     static ref APPLICATION_CONTEXT: RwLock<Option<GlobalRef>> = RwLock::new(None);
     static ref VIDEO_RAW: Mutex<FrameRaw> = Mutex::new(FrameRaw::new("video", MAX_VIDEO_FRAME_TIMEOUT));
-    static ref AUDIO_RAW: Mutex<FrameRaw> = Mutex::new(FrameRaw::new("audio", MAX_AUDIO_FRAME_TIMEOUT));
     static ref NDK_CONTEXT_INITED: Mutex<bool> = Default::default();
     static ref MEDIA_CODEC_INFOS: RwLock<Option<MediaCodecInfos>> = RwLock::new(None);
     static ref CLIPBOARD_MANAGER: RwLock<Option<GlobalRef>> = RwLock::new(None);
@@ -33,7 +32,6 @@ lazy_static! {
 }
 
 const MAX_VIDEO_FRAME_TIMEOUT: Duration = Duration::from_millis(100);
-const MAX_AUDIO_FRAME_TIMEOUT: Duration = Duration::from_millis(1000);
 
 struct FrameRaw {
     name: &'static str,
@@ -97,8 +95,8 @@ pub fn get_video_raw<'a>(dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
     VIDEO_RAW.lock().ok()?.take(dst, last)
 }
 
-pub fn get_audio_raw<'a>(dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
-    AUDIO_RAW.lock().ok()?.take(dst, last)
+pub fn get_audio_raw<'a>(_dst: &mut Vec<u8>, _last: &mut Vec<u8>) -> Option<()> {
+    None
 }
 
 pub fn get_clipboards(client: bool) -> Option<MultiClipboards> {
@@ -125,16 +123,10 @@ pub extern "system" fn Java_ffi_FFI_onVideoFrameUpdate(
 
 #[no_mangle]
 pub extern "system" fn Java_ffi_FFI_onAudioFrameUpdate(
-    env: JNIEnv,
+    _env: JNIEnv,
     _class: JClass,
-    buffer: JObject,
+    _buffer: JObject,
 ) {
-    let jb = JByteBuffer::from(buffer);
-    if let Ok(data) = env.get_direct_buffer_address(&jb) {
-        if let Ok(len) = env.get_direct_buffer_capacity(&jb) {
-            AUDIO_RAW.lock().unwrap().update(data, len);
-        }
-    }
 }
 
 #[no_mangle]
@@ -171,8 +163,6 @@ pub extern "system" fn Java_ffi_FFI_setFrameRawEnable(
         let value = value.eq(&1);
         if name.eq("video") {
             VIDEO_RAW.lock().unwrap().set_enable(value);
-        } else if name.eq("audio") {
-            AUDIO_RAW.lock().unwrap().set_enable(value);
         }
     };
 }
@@ -203,7 +193,7 @@ pub extern "system" fn Java_ffi_FFI_setClipboardManager(
 ) {
     log::debug!("ClipboardManager init from java");
     if let Ok(jvm) = env.get_java_vm() {
-        let java_vm = jvm.get_java_vm_pointer() as *mut c_void;
+        let _java_vm = jvm.get_java_vm_pointer() as *mut c_void;
         let mut jvm_lock = JVM.write().unwrap();
         if jvm_lock.is_none() {
             *jvm_lock = Some(jvm);
@@ -261,25 +251,6 @@ pub fn clear_codec_info() {
     *MEDIA_CODEC_INFOS.write().unwrap() = None;
 }
 
-// another way to fix "reference table overflow" error caused by new_string and call_main_service_pointer_input frequently calld
-// is below, but here I change kind from string to int for performance
-/*
-        env.with_local_frame(10, || {
-            let kind = env.new_string(kind)?;
-            env.call_method(
-                ctx,
-                "rustPointerInput",
-                "(Ljava/lang/String;III)V",
-                &[
-                    JValue::Object(&JObject::from(kind)),
-                    JValue::Int(mask),
-                    JValue::Int(x),
-                    JValue::Int(y),
-                ],
-            )?;
-            Ok(JObject::null())
-        })?;
-*/
 pub fn call_main_service_pointer_input(kind: &str, mask: i32, x: i32, y: i32) -> JniResult<()> {
     if let (Some(jvm), Some(ctx)) = (
         JVM.read().unwrap().as_ref(),
@@ -429,13 +400,6 @@ pub fn call_main_service_set_by_name(
     }
 }
 
-// Difference between MainService, MainActivity, JNI_OnLoad:
-//  jvm is the same, ctx is differen and ctx of JNI_OnLoad is null.
-//  cpal: all three works
-//  Service(GetByName, ...): only ctx from MainService works, so use 2 init context functions
-// On app start: JNI_OnLoad or MainActivity init context
-// On service start first time: MainService replace the context
-
 fn init_ndk_context(java_vm: *mut c_void, context_jobject: *mut c_void) {
     let mut lock = NDK_CONTEXT_INITED.lock().unwrap();
     if *lock {
@@ -472,7 +436,7 @@ fn try_init_rustls_platform_verifier(env: &mut JNIEnv, context_jobject: *mut c_v
 // https://cjycode.com/flutter_rust_bridge/guides/how-to/ndk-init
 #[no_mangle]
 pub extern "C" fn JNI_OnLoad(vm: jni::JavaVM, res: *mut std::os::raw::c_void) -> jni::sys::jint {
-    if let Ok(env) = vm.get_env() {
+    if let Ok(_env) = vm.get_env() {
         let vm = vm.get_java_vm_pointer() as *mut std::os::raw::c_void;
         init_ndk_context(vm, res);
     }
@@ -491,7 +455,7 @@ pub extern "system" fn Java_ffi_FFI_onAppStart(mut env: JNIEnv, _class: JClass, 
     }
     if let Ok(jvm) = env.get_java_vm() {
         if let Ok(context) = env.new_global_ref(ctx) {
-            let java_vm = jvm.get_java_vm_pointer() as *mut c_void;
+            let _java_vm = jvm.get_java_vm_pointer() as *mut c_void;
             let context_jobject = context.as_obj().as_raw() as *mut c_void;
             *APPLICATION_CONTEXT.write().unwrap() = Some(context);
             *JVM.write().unwrap() = Some(jvm);

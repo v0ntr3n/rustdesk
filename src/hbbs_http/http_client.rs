@@ -98,17 +98,42 @@ macro_rules! configure_http_client {
     }};
 }
 
+type ClientCacheKey = (TlsType, bool, Option<Socks5Server>);
+
+lazy_static::lazy_static! {
+    static ref SYNC_CLIENT_CACHE: std::sync::Mutex<Option<(ClientCacheKey, SyncClient)>> =
+        std::sync::Mutex::new(None);
+    static ref ASYNC_CLIENT_CACHE: std::sync::Mutex<Option<(ClientCacheKey, AsyncClient)>> =
+        std::sync::Mutex::new(None);
+}
+
 pub fn create_http_client(tls_type: TlsType, danger_accept_invalid_cert: bool) -> SyncClient {
+    let key = (tls_type, danger_accept_invalid_cert, Config::get_socks());
+    if let Some((cached_key, client)) = SYNC_CLIENT_CACHE.lock().unwrap().as_ref() {
+        if *cached_key == key {
+            return client.clone();
+        }
+    }
     let builder = SyncClient::builder();
-    configure_http_client!(builder, tls_type, danger_accept_invalid_cert, SyncClient)
+    let client = configure_http_client!(builder, tls_type, danger_accept_invalid_cert, SyncClient);
+    *SYNC_CLIENT_CACHE.lock().unwrap() = Some((key, client.clone()));
+    client
 }
 
 pub fn create_http_client_async(
     tls_type: TlsType,
     danger_accept_invalid_cert: bool,
 ) -> AsyncClient {
+    let key = (tls_type, danger_accept_invalid_cert, Config::get_socks());
+    if let Some((cached_key, client)) = ASYNC_CLIENT_CACHE.lock().unwrap().as_ref() {
+        if *cached_key == key {
+            return client.clone();
+        }
+    }
     let builder = AsyncClient::builder();
-    configure_http_client!(builder, tls_type, danger_accept_invalid_cert, AsyncClient)
+    let client = configure_http_client!(builder, tls_type, danger_accept_invalid_cert, AsyncClient);
+    *ASYNC_CLIENT_CACHE.lock().unwrap() = Some((key, client.clone()));
+    client
 }
 
 pub fn get_url_for_tls<'a>(url: &'a str, proxy_conf: &'a Option<Socks5Server>) -> &'a str {

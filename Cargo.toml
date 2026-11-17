@@ -1,6 +1,6 @@
 [package]
 name = "rustdesk"
-version = "1.5.3"
+version = "1.5.1"
 authors = ["rustdesk <info@rustdesk.com>"]
 edition = "2021"
 build= "build.rs"
@@ -22,11 +22,13 @@ path = "src/service.rs"
 
 [features]
 inline = []
-use_samplerate = ["samplerate", "libsamplerate-sys"]
-use_rubato = ["rubato"]
-use_dasp = ["dasp"]
+legacy-native-tls = ["reqwest/native-tls", "dep:openssl"]
+# Retained as no-op feature flags so existing CI / build.py invocations do not fail
+use_samplerate = []
+use_rubato = []
+use_dasp = []
 flutter = ["flutter_rust_bridge"]
-default = ["use_dasp"]
+default = []
 hwcodec = ["scrap/hwcodec"]
 vram = ["scrap/vram"]
 mediacodec = ["scrap/mediacodec"]
@@ -45,7 +47,7 @@ unix-file-copy-paste = [
     "dep:once_cell",
     "clipboard/unix-file-copy-paste",
 ]
-screencapturekit = ["cpal/screencapturekit"]
+screencapturekit = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -66,14 +68,10 @@ zstd = "0.13"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 parity-tokio-ipc = { git = "https://github.com/rustdesk-org/parity-tokio-ipc" }
 magnum-opus = { git = "https://github.com/rustdesk-org/magnum-opus" }
-dasp = { version = "0.11", features = ["signal", "interpolate-linear", "interpolate"], optional = true }
-rubato = { version = "0.12", optional = true }
-samplerate = { version = "0.2", optional = true }
-libsamplerate-sys = { version = "0.1.12", optional = true }
 uuid = { version = "1.3", features = ["v4"] }
 num_cpus = "1.15"
 bytes = { version = "1.4", features = ["serde"] }
-default-net = { git = "https://github.com/rustdesk-org/netdev", branch = "rustdesk-0.22" }
+default-net = "0.14"
 wol-rs = "1.0"
 flutter_rust_bridge = { version = "=1.80", features = ["uuid"], optional = true}
 errno = "0.3"
@@ -83,12 +81,11 @@ crossbeam-queue = "0.3"
 hex = "0.4"
 chrono = "0.4"
 cidr-utils = "0.5"
-fon = "0.6"
 shutdown_hooks = "0.1"
 totp-rs = { version = "5.4", default-features = false, features = ["gen_secret", "otpauth"] }
 stunclient = "0.4"
 kcp-sys= { git = "https://github.com/rustdesk-org/kcp-sys", branch = "rustdesk-patches" }
-reqwest = { version = "0.12", features = ["blocking", "socks", "json", "native-tls", "rustls-tls", "rustls-tls-native-roots", "gzip", "zstd"], default-features=false }
+reqwest = { version = "0.12", features = ["blocking", "socks", "json", "rustls-tls", "rustls-tls-native-roots", "gzip", "zstd"], default-features=false }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 # https://github.com/rustdesk/rustdesk/discussions/10197, not use cpal on linux
@@ -106,7 +103,6 @@ ctrlc = "3.2"
 arboard = { git = "https://github.com/rustdesk-org/arboard", features = ["wayland-data-control"] }
 clipboard-master = { git = "https://github.com/rustdesk-org/clipboard-master" }
 portable-pty = { git = "https://github.com/rustdesk-org/wezterm", branch = "rustdesk/pty_based_0.8.1", package = "portable-pty" }
-
 system_shutdown = "4.0"
 qrcode-generator = "4.1"
 
@@ -127,8 +123,6 @@ winapi = { version = "0.3", features = [
     "winspool",
 ] }
 windows = { version = "0.61", features = [
-    "Wdk_Foundation",
-    "Wdk_Storage_FileSystem",
     "Win32",
     "Win32_Foundation",
     "Win32_Security",
@@ -145,7 +139,6 @@ windows = { version = "0.61", features = [
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
-    "Win32_System_WindowsProgramming",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
@@ -197,7 +190,7 @@ evdev = { git="https://github.com/rustdesk-org/evdev" }
 dbus = "0.9"
 dbus-crossroads = "0.5"
 x11-clipboard = {git="https://github.com/clslaid/x11-clipboard", branch = "feat/store-batch", optional = true}
-x11rb =  {version = "0.12", features = ["all-extensions"], optional = true}
+x11rb = {version = "0.12", features = ["all-extensions"], optional = true}
 percent-encoding = {version = "2.3", optional = true}
 once_cell = {version = "1.18", optional = true}
 nix = { version = "0.29", features = ["term", "process"]}
@@ -209,7 +202,7 @@ wayland-client = "0.31"
 xkbcommon-dl = { version = "0.4", features = ["x11"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.13"
@@ -274,7 +267,6 @@ hbb_common = { path = "libs/hbb_common" }
 os-version = "0.2"
 
 [dev-dependencies]
-hound = "3.5"
 docopt = "1.1"
 tokio = { version = "1.44", features = ["test-util"] }
 
@@ -293,10 +285,14 @@ strip = true
 #opt-level = 'z' # only have smaller size after strip
 rpath = true
 
+[profile.release.package.webrtc]
+opt-level = "s"
+[profile.release.package.webrtc-sctp]
+opt-level = "s"
+[profile.release.package.protobuf]
+opt-level = "s"
+[profile.release.package.reqwest]
+opt-level = "s"
+
 [profile.dev]
 debug = 1
-
-# sciter-rs transmutes OR'ed flags into fieldless enums; rustc's debug-build
-# enum check aborts on them (release builds never had the check).
-[profile.dev.package.sciter-rs]
-debug-assertions = false

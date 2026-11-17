@@ -2,6 +2,7 @@ use super::*;
 use std::{
     collections::HashSet,
     ops::{Deref, DerefMut},
+    sync::Condvar,
     thread::{self, JoinHandle},
     time,
 };
@@ -38,10 +39,14 @@ pub trait Reset {
     fn init(&mut self) {}
 }
 
-pub struct ServiceTmpl<T: Subscriber + From<ConnInner>>(Arc<RwLock<ServiceInner<T>>>);
+pub struct ServiceTmpl<T: Subscriber + From<ConnInner>>(
+    Arc<RwLock<ServiceInner<T>>>,
+    Arc<(Mutex<()>, Condvar)>,
+);
 pub struct ServiceSwap<T: Subscriber + From<ConnInner>>(ServiceTmpl<T>);
 pub type GenericService = ServiceTmpl<ConnInner>;
 pub const HIBERNATE_TIMEOUT: u64 = 30;
+const IDLE_PARK_TIMEOUT: time::Duration = time::Duration::from_millis(5_000);
 pub const MAX_ERROR_TIMEOUT: u64 = 1_000;
 pub const SERVICE_OPTION_VALUE_TRUE: &str = "1";
 pub const SERVICE_OPTION_VALUE_FALSE: &str = "0";
@@ -114,6 +119,8 @@ impl<T: Subscriber + From<ConnInner>> Service for ServiceTmpl<T> {
         } else {
             lock.subscribes.insert(sub.id(), sub.into());
         }
+        drop(lock);
+        self.1 .1.notify_all();
     }
 
     fn on_unsubscribe(&self, id: i32) {
@@ -125,6 +132,7 @@ impl<T: Subscriber + From<ConnInner>> Service for ServiceTmpl<T> {
 
     fn join(&self) {
         self.0.write().unwrap().active = false;
+        self.1 .1.notify_all();
         let handle = self.0.write().unwrap().handle.take();
         if let Some(handle) = handle {
             if let Err(e) = handle.join() {
@@ -154,18 +162,31 @@ impl<T: Subscriber + From<ConnInner>> Service for ServiceTmpl<T> {
 
 impl<T: Subscriber + From<ConnInner>> Clone for ServiceTmpl<T> {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self(self.0.clone(), self.1.clone())
     }
 }
 
 impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
     pub fn new(name: String, need_snapshot: bool) -> Self {
-        Self(Arc::new(RwLock::new(ServiceInner::<T> {
-            name,
-            active: true,
-            need_snapshot,
-            ..Default::default()
-        })))
+        Self(
+            Arc::new(RwLock::new(ServiceInner::<T> {
+                name,
+                active: true,
+                need_snapshot,
+                ..Default::default()
+            })),
+            Arc::new((Mutex::new(()), Condvar::new())),
+        )
+    }
+
+    #[inline]
+    fn park_while_idle(&self) {
+        if self.active() && !self.has_subscribes() {
+            let guard = self.1 .0.lock().unwrap();
+            if self.active() && !self.has_subscribes() {
+                let _ = self.1 .1.wait_timeout(guard, IDLE_PARK_TIMEOUT);
+            }
+        }
     }
 
     #[inline]
@@ -233,8 +254,8 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
     }
 
     pub fn send_video_frame_shared(&self, msg: Arc<Message>) -> HashSet<i32> {
-        let mut conn_ids = HashSet::new();
         let mut lock = self.0.write().unwrap();
+        let mut conn_ids = HashSet::with_capacity(lock.subscribes.len());
         for s in lock.subscribes.values_mut() {
             s.send(msg.clone());
             conn_ids.insert(s.id());
@@ -277,9 +298,13 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
                         #[cfg(windows)]
                         crate::platform::windows::try_change_desktop();
                     }
-                } else if may_reset {
-                    state.reset();
-                    may_reset = false;
+                } else {
+                    if may_reset {
+                        state.reset();
+                        may_reset = false;
+                    }
+                    sp.park_while_idle();
+                    continue;
                 }
                 let elapsed = now.elapsed();
                 if elapsed < interval {
@@ -320,8 +345,10 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
                     } else {
                         log::debug!("Exit {} service inner loop", sp.name());
                     }
+                    thread::sleep(time::Duration::from_millis(HIBERNATE_TIMEOUT));
+                } else {
+                    sp.park_while_idle();
                 }
-                thread::sleep(time::Duration::from_millis(HIBERNATE_TIMEOUT));
             }
             log::info!("Service {} exit", sp.name());
         });
