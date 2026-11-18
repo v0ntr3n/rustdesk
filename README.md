@@ -1,3 +1,11 @@
+> ### 🛠️ Custom Windows x64 Engineering Fork (`v0ntr3n/rustdesk`)
+> This fork maintains a streamlined **Windows x64 Flutter desktop CI/CD build pipeline** and codec footprint optimizations on top of upstream RustDesk:
+> - **H.264-Only Hardware Codec Trimming:** Stripped HEVC from the `vcpkg` FFmpeg portfile while retaining hardware-accelerated H.264 (`hwcodec` / `vram`) with Release-only `vcpkg` triplets.
+> - **ABI & Link-Time Optimization:** Resolved cached `vcpkg` FFmpeg ABI mismatches, fixed Flutter engine replacement steps in `build.py`, and enabled fat LTO for smaller, faster Windows release binaries.
+> - **Dedicated GitHub Actions CI:** Added automated Windows x64 build & packaging workflow (`.github/workflows/`).
+
+---
+
 <p align="center">
   <img src="res/logo-header.svg" alt="RustDesk - Your remote desktop"><br>
   <a href="#raw-steps-to-build">Build</a> •
